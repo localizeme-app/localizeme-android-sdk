@@ -1,0 +1,47 @@
+name: Publish to Maven Central
+
+# A pushed tag publishes app.localizeme:sdk:<tag> to Maven Central and
+# releases it. The tag has to match `version` in localizeme/build.gradle.kts.
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+    steps:
+      - name: Check the Maven Central secrets are set
+        id: secrets
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_mavenCentralUsername" ] || [ -z "$ORG_GRADLE_PROJECT_signingInMemoryKey" ]; then
+            echo "::warning::Maven Central secrets are not set; skipping. See RELEASING.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+      - uses: actions/setup-java@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.secrets.outputs.ready == 'true'
+      - name: Check the tag matches the version
+        if: steps.secrets.outputs.ready == 'true' && github.ref_type == 'tag'
+        run: |
+          version=$(./gradlew -q :localizeme:properties --property version | awk '/^version:/ {print $2}')
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in localizeme/build.gradle.kts"
+            exit 1
+          fi
+      - name: Publish and release
+        if: steps.secrets.outputs.ready == 'true'
+        run: ./gradlew :localizeme:publishAndReleaseToMavenCentral --no-configuration-cache

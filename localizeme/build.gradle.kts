@@ -1,7 +1,9 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("maven-publish")
+    id("com.vanniktech.maven.publish")
 }
 
 group = "app.localizeme"
@@ -27,11 +29,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
 }
 
 kotlin {
@@ -54,13 +51,43 @@ dependencies {
     androidTestImplementation("androidx.appcompat:appcompat:1.7.0")
 }
 
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "app.localizeme"
-            artifactId = "sdk"
-            version = project.version.toString()
-            afterEvaluate { from(components["release"]) }
+mavenPublishing {
+    configure(AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true))
+    coordinates("app.localizeme", "sdk", version.toString())
+
+    // Maven Central requires every artifact to be signed. A build without a
+    // key (a local publish, or JitPack building a tag) publishes unsigned.
+    publishToMavenCentral(automaticRelease = true)
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
+
+    pom {
+        name.set("LocalizeMe Android SDK")
+        description.set(
+            "Over-the-air translations for Android apps from LocalizeMe: approved strings " +
+                "reach the app on its next start without a Play Store release.",
+        )
+        inceptionYear.set("2026")
+        url.set("https://github.com/localizeme-app/localizeme-android-sdk")
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+                distribution.set("repo")
+            }
+        }
+        developers {
+            developer {
+                id.set("localizeme-app")
+                name.set("LocalizeMe")
+                url.set("https://localizeme.app")
+            }
+        }
+        scm {
+            url.set("https://github.com/localizeme-app/localizeme-android-sdk")
+            connection.set("scm:git:git://github.com/localizeme-app/localizeme-android-sdk.git")
+            developerConnection.set("scm:git:ssh://git@github.com/localizeme-app/localizeme-android-sdk.git")
         }
     }
 }
