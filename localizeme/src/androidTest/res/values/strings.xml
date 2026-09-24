@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lz_test_title">Shipped title</string>
+    <string name="lz_test_hint">Shipped hint</string>
+    <string name="lz_test_toolbar">Shipped toolbar</string>
+    <string name="lz_test_subtitle">Shipped subtitle</string>
+    <string name="lz_test_description">Shipped description</string>
+    <string name="lz_test_plain">Shipped plain</string>
+    <string name="lz_test_count">%1$d items</string>
+    <string name="lz_test_range">%1$d to %2$d</string>
+    <string name="lz_test_bold">Shipped <b>bold</b></string>
+    <string name="lz_test_mixed">Shipped <b>bold</b></string>
+    <string name="lz_test_untranslated">Only shipped</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- An AppCompat activity, so the tests cover the createConfigurationContext path
+             AppCompat takes for night mode and app locales. -->
+        <activity
+            android:name="app.localizeme.sdk.TestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.DayNight" />
+    </application>
+</manifest>

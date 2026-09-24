@@ -1,0 +1,6 @@
+# JitPack builds a tagged release straight from this repository. The Android
+# Gradle Plugin needs JDK 17; JitPack's default is older.
+jdk:
+  - openjdk17
+install:
+  - ./gradlew :localizeme:publishToMavenLocal
