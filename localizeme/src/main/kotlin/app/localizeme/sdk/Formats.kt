@@ -33,13 +33,25 @@ internal object Formats {
         "(?:$SPACE+[A-Za-z_:][-A-Za-z0-9_:.]*(?:$SPACE*=$SPACE*(?:\"[^\"]*\"|'[^']*'|$NOT_VALUE+))?)"
     private val TAG_NAMES = STYLE_TAGS.sortedByDescending { it.length }.joinToString("|")
 
-    /** An open tag (group 1, attributes in 2, `/` of a self-closing tag in 3) or a close tag (4). */
+    /**
+     * A CDATA section, kept in a stored value as written: how a strings.xml
+     * ships HTML for the app to render itself with `Html.fromHtml`. aapt keeps
+     * every tag inside one as text, so it is text here too, once the escapes
+     * and whitespace folding aapt applies to it are applied (see [compiled]).
+     * Case-sensitive, as XML is; the tags are not.
+     */
+    private const val CDATA = "<!\\[CDATA\\[[\\s\\S]*?\\]\\]>"
+
+    /**
+     * An open tag (group 1, attributes in 2, `/` of a self-closing tag in 3),
+     * a close tag (4) or a CDATA section (5).
+     */
     private val TAG = Regex(
-        "<($TAG_NAMES)($ATTRIBUTE*)$SPACE*(/)?>|</($TAG_NAMES)$SPACE*>",
+        "<($TAG_NAMES)($ATTRIBUTE*)$SPACE*(/)?>|</($TAG_NAMES)$SPACE*>|((?-i:$CDATA))",
         RegexOption.IGNORE_CASE,
     )
 
-    private enum class Kind { TEXT, OPEN, EMPTY, CLOSE }
+    private enum class Kind { TEXT, OPEN, EMPTY, CLOSE, CDATA }
 
     private class Token(var kind: Kind, val name: String, val source: String)
 
@@ -57,11 +69,13 @@ internal object Formats {
                 out += Token(Kind.TEXT, "", value.substring(position, match.range.first))
             }
             val close = match.groups[4]
-            out += if (close != null) {
-                Token(Kind.CLOSE, close.value.lowercase(), match.value)
-            } else {
-                val kind = if (match.groups[3] != null) Kind.EMPTY else Kind.OPEN
-                Token(kind, match.groups[1]!!.value.lowercase(), match.value)
+            out += when {
+                match.groups[5] != null -> Token(Kind.CDATA, "", match.value)
+                close != null -> Token(Kind.CLOSE, close.value.lowercase(), match.value)
+                else -> {
+                    val kind = if (match.groups[3] != null) Kind.EMPTY else Kind.OPEN
+                    Token(kind, match.groups[1]!!.value.lowercase(), match.value)
+                }
             }
             position = match.range.last + 1
         }
@@ -117,8 +131,8 @@ internal object Formats {
 
     /**
      * Whether [value] holds at least one of the [STYLE_TAGS], paired. A bare
-     * `<` in prose (`5 < 6`), a tag outside the eleven (`<em>`, `<br>`) or an
-     * unpaired `<b>` is not markup.
+     * `<` in prose (`5 < 6`), a tag outside the eleven (`<em>`, `<br>`), an
+     * unpaired `<b>` or a tag inside a CDATA section is not markup.
      */
     fun hasMarkup(value: String): Boolean =
         '<' in value && tokens(value).any { it.kind == Kind.OPEN || it.kind == Kind.EMPTY }
@@ -127,26 +141,99 @@ internal object Formats {
      * [value] as input for `Html.fromHtml`: the recognised tags passed through
      * as written, every other `&`, `<` and `>` escaped, so `fromHtml` draws the
      * eleven tags and shows anything else, `<em>` or `&amp;` included, exactly
-     * as an exported strings.xml would. A newline becomes `<br>`, because
-     * `fromHtml` folds a plain one into a space.
+     * as an exported strings.xml would. A CDATA section is text like any
+     * other, as [compiled]. A newline becomes `<br>`, because `fromHtml` folds
+     * a plain one into a space.
      */
     fun toHtml(value: String): String {
         val out = StringBuilder(value.length + 16)
         for (token in tokens(value)) {
-            if (token.kind != Kind.TEXT) {
-                out.append(token.source)
-                continue
-            }
-            for (char in token.source) {
-                when (char) {
-                    '&' -> out.append("&amp;")
-                    '<' -> out.append("&lt;")
-                    '>' -> out.append("&gt;")
-                    '\n' -> out.append("<br>")
-                    else -> out.append(char)
-                }
+            when (token.kind) {
+                Kind.TEXT -> appendEscaped(out, token.source)
+                Kind.CDATA -> appendEscaped(out, compiled(token.source))
+                else -> out.append(token.source)
             }
         }
         return out.toString()
     }
+
+    private fun appendEscaped(out: StringBuilder, text: String) {
+        for (char in text) {
+            when (char) {
+                '&' -> out.append("&amp;")
+                '<' -> out.append("&lt;")
+                '>' -> out.append("&gt;")
+                '\n' -> out.append("<br>")
+                else -> out.append(char)
+            }
+        }
+    }
+
+    /**
+     * [value] as `getString` returns it when nothing in it is styled: every
+     * CDATA section replaced by the text aapt compiles it to, tags and all,
+     * everything else as written.
+     */
+    fun text(value: String): String {
+        if (!value.contains("<![CDATA[")) return value
+        val out = StringBuilder(value.length)
+        for (token in tokens(value)) {
+            out.append(if (token.kind == Kind.CDATA) compiled(token.source) else token.source)
+        }
+        return out.toString()
+    }
+
+    private const val ASCII_SPACE = " \t\n\r\u000B\u000C"
+
+    /**
+     * The text aapt compiles a CDATA section to, the way aapt2's
+     * ResourceUtils::StringBuilder reads it (the server's importer mirrors the
+     * same rules): outside double quotes a run of whitespace is one space and
+     * none survives at either end; a double quote toggles quoting and is
+     * dropped; `\n`, `\t` and `\uXXXX` are the escapes, and any other
+     * backslash keeps the character after it.
+     */
+    internal fun compiled(section: String): String {
+        val raw = section.removePrefix("<![CDATA[").removeSuffix("]]>")
+        val out = StringBuilder(raw.length)
+        var quoted = false
+        var afterSpace = true // nothing yet, so leading whitespace is dropped
+        var i = 0
+        while (i < raw.length) {
+            val char = raw[i]
+            if (!quoted && char in ASCII_SPACE) {
+                if (!afterSpace) {
+                    out.append(' ')
+                    afterSpace = true
+                }
+                i++
+                continue
+            }
+            afterSpace = false
+            if (char == '\\' && i + 1 < raw.length) {
+                val following = raw[i + 1]
+                i += 2
+                when {
+                    following == 'n' -> out.append('\n')
+                    following == 't' -> out.append('\t')
+                    following == 'u' && isHex4(raw, i) -> {
+                        out.append(raw.substring(i, i + 4).toInt(16).toChar())
+                        i += 4
+                    }
+                    else -> out.append(following)
+                }
+                continue
+            }
+            if (char == '"') quoted = !quoted else out.append(char)
+            i++
+        }
+        // A folded space is the only way the text can end in one.
+        if (afterSpace && out.isNotEmpty()) out.setLength(out.length - 1)
+        return out.toString()
+    }
+
+    private fun isHex4(text: String, from: Int): Boolean =
+        from + 4 <= text.length && (from until from + 4).all {
+            text[it] in '0'..'9' || text[it] in 'a'..'f' || text[it] in 'A'..'F'
+        }
 }

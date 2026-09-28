@@ -74,6 +74,9 @@ the ones AppCompat makes for night mode and per-app locales):
   `<i>`, `<u>`, `<font>`, `<a>`, `<big>`, `<small>`, `<sup>`, `<sub>`,
   `<strike>`, `<tt>`. Any other tag (`<em>`, `<br>`, …) and any `&` or `<` in
   the text is shown as written, exactly as an exported strings.xml shows it.
+  A value written as a CDATA section (`<![CDATA[<b>Hi</b><br>there]]>`) comes
+  back as the text inside it, tags and all, the way aapt compiles it, for the
+  app to render with `Html.fromHtml` as it does today.
 
 ### Out of scope
 

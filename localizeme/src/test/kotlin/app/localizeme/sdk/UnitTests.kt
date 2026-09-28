@@ -132,6 +132,29 @@ class FormatsTest {
         assertFalse(Formats.hasMarkup("a stray </b> close"))
     }
 
+    @Test fun aCdataSectionIsTextTheAppRendersItself() {
+        val value = "<![CDATA[<b>Awesome!</b> We found <font color=%1\$s>%2\$d</font><br>more]]>"
+        assertFalse(Formats.hasMarkup(value))
+        assertEquals("<b>Awesome!</b> We found <font color=%1\$s>%2\$d</font><br>more", Formats.text(value))
+        // Inside a styled value the section is text too, escaped for fromHtml.
+        assertEquals("<b>x</b> &lt;i&gt;raw&lt;/i&gt;", Formats.toHtml("<b>x</b> <![CDATA[<i>raw</i>]]>"))
+        // XML's section is upper case; anything else is prose, tags and all.
+        assertEquals("<![cdata[x]]>", Formats.text("<![cdata[x]]>"))
+        assertEquals("&lt;![cdata[<b>x</b>]]&gt;", Formats.toHtml("<![cdata[<b>x</b>]]>"))
+        assertEquals("plain", Formats.text("plain"))
+    }
+
+    @Test fun aCdataSectionIsCompiledTheWayAaptCompilesIt() {
+        assertEquals(
+            "No matches for \"%s\" <br /> here",
+            Formats.text("<![CDATA[\n    No matches for \\\"%s\\\" <br />\n    here\n]]>"),
+        )
+        assertEquals(" a b\tc", Formats.text("<![CDATA[\\u0020a  b\\tc ]]>"))
+        assertEquals("kept  \"inside\"", Formats.text("<![CDATA[\"kept  \\\"inside\\\"\"]]>"))
+        assertEquals("@?#\\'", Formats.text("<![CDATA[\\@\\?\\#\\\\\\']]>"))
+        assertEquals("", Formats.text("<![CDATA[   ]]>"))
+    }
+
     @Test fun htmlKeepsTheElevenAndEscapesEverythingElse() {
         assertEquals("Read the <b>terms</b> &amp; more", Formats.toHtml("Read the <b>terms</b> & more"))
         assertEquals(

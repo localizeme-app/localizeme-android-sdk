@@ -209,7 +209,9 @@ internal class OtaResources(
      * The OTA value for [id], or null when the app should use its own. A value
      * holding one of [Formats.STYLE_TAGS] comes back styled, as the framework
      * styles the same tags in `res/values`; any other tag, and any `&` or `<`
-     * in the text, is shown as written, as aapt would show it.
+     * in the text, is shown as written, as aapt would show it. A CDATA section
+     * comes back as the text aapt compiles it to, tags and all, for the app to
+     * render itself.
      */
     internal fun otaText(id: Int): CharSequence? {
         val value = ota(id) ?: return null
@@ -217,7 +219,7 @@ internal class OtaResources(
         val text: CharSequence = if (Formats.hasMarkup(value)) {
             SpannedString(Html.fromHtml(Formats.toHtml(value), Html.FROM_HTML_MODE_COMPACT))
         } else {
-            value
+            Formats.text(value)
         }
         texts[id] = value to text
         return text
