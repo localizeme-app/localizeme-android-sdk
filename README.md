@@ -1,7 +1,8 @@
 # LocalizeMe for Android
 
-Over-the-air translations. Approved strings in the LocalizeMe dashboard reach
-the app on its next start, without a Play Store release.
+Over-the-air translations for Android apps. Approved strings in the
+[LocalizeMe](https://localizeme.app/?src=github-android-sdk) dashboard reach the app on its next start,
+without a Play Store release.
 
 - minSdk 24. Kotlin. One dependency (`androidx.lifecycle:lifecycle-process`,
   for foreground detection).
@@ -173,6 +174,32 @@ the SDK is reported, never thrown into the app.
 
 Needs a JDK 17+ on `JAVA_HOME` and the Android SDK on `ANDROID_HOME`
 (Android Studio's bundled JDK works: `Android Studio.app/Contents/jbr/Contents/Home`).
+
+## About LocalizeMe
+
+[LocalizeMe](https://localizeme.app/?src=github-android-sdk) is a localization platform
+for product teams: every string your apps ship, in every language, in one
+place.
+Translators work in an editor with review statuses, screenshots that show
+where a string appears, key groups and the full history of every change.
+
+- **Unlimited keys and languages on every plan, the free one included.** Paid
+  plans are one flat price per workspace, not per seat or per string.
+- **The files every platform uses:** Android `strings.xml`, iOS `.xcstrings`
+  and `.strings`, Flutter ARB, JSON, YAML, CSV, XLIFF 1.2, gettext PO and Java
+  `.properties`, with a separate value per platform where iOS and Android need
+  to differ.
+- **Strings over the air:** this SDK and the
+  [iOS SDK](https://github.com/localizeme-app/localizeme-ios-sdk)
+  update an app's text without a store release.
+- **For developers and their agents:** the
+  [CLI](https://github.com/localizeme-app/localizeme-cli)
+  for builds and CI, a REST API, and an MCP server that Claude, Cursor and
+  other coding agents can work with.
+
+[Start free](https://localizeme.app/register?src=github-android-sdk), no credit card needed ·
+[Pricing](https://localizeme.app/pricing?src=github-android-sdk) ·
+[Developers](https://localizeme.app/developers?src=github-android-sdk)
 
 ## License
 
