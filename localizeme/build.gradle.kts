@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "app.localizeme"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 
 android {
     namespace = "app.localizeme.sdk"
@@ -32,8 +32,14 @@ android {
 }
 
 kotlin {
+    // Built with Kotlin 2.2, but apps still on Kotlin 2.0 must be able to read
+    // the classes: their compiler rejects metadata newer than 2.1, and the
+    // stdlib this depends on would pull them up to 2.2 as well.
+    coreLibrariesVersion = "2.0.0"
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
     }
 }
 
