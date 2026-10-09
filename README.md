@@ -145,6 +145,19 @@ LocalizeMe.setLanguage("lt")               // in-app language switch
 LocalizeMe.version                         // 0 until something has been downloaded
 ```
 
+### Releases
+
+Apps get releases: numbered snapshots of the project's approved strings,
+published from the Mobile SDK tab, by hand or automatically as strings are
+approved. The version the SDK logs and reports (`LocalizeMe.version`) is the
+release number, and 0 means no release covers this app yet.
+
+A release can be limited to apps from a minimum version. The SDK sends the
+app's version with every check, as `versionName` plus `versionCode`, and gets
+the newest release whose minimum it meets; the minimum is compared with
+`versionName`. An older app keeps the last release that covers it, or its own
+shipped strings when none does. Nothing to configure in the app.
+
 ## How it works
 
 1. On start the SDK loads the last bundle from `cacheDir/localizeme/` and
