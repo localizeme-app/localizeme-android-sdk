@@ -76,7 +76,7 @@ class OtaInstrumentedTest {
         val app = ApplicationProvider.getApplicationContext<Context>()
         root = File(app.cacheDir, "localizeme-test-${System.nanoTime()}")
         val config = LocalizeMeConfig(sdkKey = "lzs_instrumented", baseUrl = "https://test", applyImmediately = true, reportMissingKeys = false)
-        val api = Api(config, MemoryServer(ota), installId = { "install" }, appVersion = { "1.0 (1)" }, osVersion = "Android test")
+        val api = Api(config, MemoryServer(ota), installIdSupplier = { "install" }, appVersion = { "1.0 (1)" }, osVersion = "Android test")
         val client = Client(config, Store(root), api, preferredLanguages = { listOf("en") })
         LocalizeMe.install(client)
         client.drainQueue()

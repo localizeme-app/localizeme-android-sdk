@@ -87,17 +87,27 @@ class ClientTest {
     private val server = FakeServer()
     private val root: File = Files.createTempDirectory("lz").toFile()
 
+    /** Stands in for SharedPreferences: the id the SDK made, until it is removed. */
+    private var storedInstallId: String? = null
+    private var installIdsMade = 0
+
     private fun makeClient(
         applyImmediately: Boolean = false,
         languages: List<String> = listOf("de-DE"),
         scope: LanguageScope = LanguageScope.DEVICE,
         store: Store = Store(root),
+        consent: Consent = Consent.FULL,
     ): Client {
         val config = LocalizeMeConfig(
             sdkKey = "lzs_test_key_1234", baseUrl = "https://api.test",
-            applyImmediately = applyImmediately, languageScope = scope,
+            applyImmediately = applyImmediately, languageScope = scope, consent = consent,
         )
-        val api = Api(config, server, installId = { "install-1" }, appVersion = { "1.0 (1)" }, osVersion = "Android 15")
+        val api = Api(
+            config, server,
+            installIdSupplier = { storedInstallId ?: "install-${++installIdsMade}".also { storedInstallId = it } },
+            appVersion = { "1.0 (1)" }, osVersion = "Android 15",
+            removeStoredInstallId = { storedInstallId = null },
+        )
         return Client(config, store, api, { languages })
     }
 
@@ -402,5 +412,113 @@ class ClientTest {
         val client = makeClient()
         start(client)
         assertEquals(CheckOutcome.Throttled, client.runCheck(force = false).getOrThrow())
+    }
+
+    // consent
+
+    private val installHeaders = listOf("X-LocalizeMe-Install", "X-LocalizeMe-App", "X-LocalizeMe-OS", "X-LocalizeMe-Language")
+
+    @Test fun stringsOnlyDownloadsWithoutSayingAnythingAboutTheInstall() {
+        val client = makeClient(consent = Consent.STRINGS_ONLY)
+        assertEquals(CheckOutcome.Applied(1), start(client).getOrThrow())
+        assertEquals("Startseite", client.string("home_title"))
+        // A second check runs with a language live, so it would carry one.
+        client.runCheck(force = true)
+        client.drainQueue()
+        assertTrue(server.requests.size >= 3)
+        for ((url, headers) in server.requests) {
+            for (header in installHeaders) assertNull("$header on $url", headers[header])
+            assertEquals("Bearer lzs_test_key_1234", headers["Authorization"])
+            assertEquals(Api.SDK_VERSION, headers["X-LocalizeMe-SDK"])
+        }
+        assertEquals(0, installIdsMade)
+    }
+
+    @Test fun stringsOnlyReportsNothing() {
+        server.corruptBundles = true
+        val client = makeClient(consent = Consent.STRINGS_ONLY)
+        start(client)
+        client.noteMissing("settings_title")
+        assertTrue(client.reporter.isEmpty)
+        client.runCheck(force = true)
+        assertTrue(server.reports.isEmpty())
+        assertFalse(server.requests.any { it.first.contains("/report") })
+    }
+
+    @Test fun offMakesNoRequestsAndKeepsTheCachedStrings() {
+        start(makeClient())
+        val before = server.requests.size
+        val client = makeClient(consent = Consent.OFF)
+        val outcome = start(client)
+        assertEquals(ErrorKind.CONSENT_OFF, (outcome.exceptionOrNull() as LocalizeMeException).kind)
+        assertEquals("Startseite", client.string("home_title"))
+        client.drainQueue()
+        assertEquals(before, server.requests.size)
+        assertTrue(server.reports.isEmpty())
+    }
+
+    @Test fun leavingOffChecksStraightAway() {
+        val client = makeClient(consent = Consent.OFF)
+        start(client)
+        assertTrue(server.requests.isEmpty())
+        client.setConsent(Consent.STRINGS_ONLY)
+        client.drainQueue()
+        assertEquals("Startseite", client.string("home_title"))
+        assertTrue(server.requests.none { it.second["X-LocalizeMe-Install"] != null })
+    }
+
+    @Test fun withdrawingConsentDeletesTheInstallId() {
+        val client = makeClient()
+        start(client)
+        assertEquals("install-1", storedInstallId)
+
+        client.noteMissing("settings_title")
+        client.setConsent(Consent.STRINGS_ONLY)
+        assertTrue(client.reporter.isEmpty)
+        client.drainQueue()
+        assertNull(storedInstallId)
+        client.runCheck(force = true)
+        assertNull(server.requests.last { it.first.contains("/manifest") }.second["X-LocalizeMe-Install"])
+        assertTrue(missingKeys().isEmpty())
+
+        // Granting again makes a new id rather than bringing the old one back.
+        client.setConsent(Consent.FULL)
+        client.drainQueue()
+        client.runCheck(force = true)
+        assertEquals("install-2", server.requests.last { it.first.contains("/manifest") }.second["X-LocalizeMe-Install"])
+    }
+
+    @Test fun startingBelowFullDeletesAnEarlierInstallId() {
+        storedInstallId = "old-id"
+        val client = makeClient(consent = Consent.STRINGS_ONLY)
+        client.start()
+        client.drainQueue()
+        assertNull(storedInstallId)
+    }
+
+    @Test fun consentChangedBeforeStartLeavesTheFirstCheckToStart() {
+        val client = makeClient(consent = Consent.OFF)
+        client.setConsent(Consent.FULL)
+        client.drainQueue()
+        assertTrue(server.requests.isEmpty())
+        assertEquals(CheckOutcome.Applied(1), start(client).getOrThrow())
+        assertEquals("install-1", server.requests.first { it.first.contains("/manifest") }.second["X-LocalizeMe-Install"])
+    }
+
+    @Test fun nothingIsReportedBelowFullEvenIfSomethingWasBuffered() {
+        val client = makeClient()
+        start(client)
+        client.setConsent(Consent.STRINGS_ONLY)
+        client.drainQueue()
+        // Recorded behind the reporter's back, as a racing call could leave it.
+        client.reporter.setEnabled(true)
+        client.noteMissing("settings_title")
+        client.runCheck(force = true)
+        assertTrue(server.reports.isEmpty())
+    }
+
+    @Test fun consentLevelsAreOrdered() {
+        assertTrue(Consent.OFF < Consent.STRINGS_ONLY)
+        assertTrue(Consent.STRINGS_ONLY < Consent.FULL)
     }
 }

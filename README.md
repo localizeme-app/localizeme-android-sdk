@@ -10,8 +10,7 @@ without a Play Store release.
 
 ## Install
 
-While the SDK is in beta it is published through JitPack, built from the
-tags of https://github.com/localizeme-app/localizeme-android-sdk. Add the
+The SDK is published through JitPack, built from the tags of https://github.com/localizeme-app/localizeme-android-sdk. Add the
 repository in `settings.gradle.kts`:
 
 ```kotlin
@@ -28,12 +27,12 @@ and the dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.github.localizeme-app:localizeme-android-sdk:0.1.0-beta.2")
+    implementation("com.github.localizeme-app:localizeme-android-sdk:1.0.0")
 }
 ```
 
 To build from source instead, run `./gradlew :localizeme:publishToMavenLocal`
-in this repository and depend on `app.localizeme:sdk:0.1.0-beta.2` from
+in this repository and depend on `app.localizeme:sdk:1.0.0` from
 `mavenLocal()`.
 
 ## Use
@@ -119,6 +118,41 @@ LocalizeMe.start(this, LocalizeMeConfig(
 ))
 ```
 
+### Consent
+
+Apps that ask the user first (a consent banner or a CMP such as Usercentrics,
+OneTrust or Didomi) tell the SDK what it may do:
+
+| Level | Network | Kept on the device | Sent |
+|---|---|---|---|
+| `Consent.FULL` (default) | yes | strings, a random install id | SDK key; SDK, app and OS version; language; install id; errors and missing keys |
+| `Consent.STRINGS_ONLY` | yes | strings | SDK key and SDK version only |
+| `Consent.OFF` | none | strings already downloaded | nothing |
+
+Going below `FULL` deletes the install id and drops anything waiting to be
+reported; granting again makes a new id. Leaving `OFF` checks straight away.
+Already downloaded strings keep showing at every level, falling back to the
+shipped ones.
+
+The level is not remembered between starts, because the consent tool is the
+record. Start at the level it last gave, or at `OFF` until it answers, and call
+`setConsent` on every change. A `setConsent` before `start` is kept.
+
+```kotlin
+LocalizeMe.start(this, LocalizeMeConfig(sdkKey = "lzs_…", consent = Consent.OFF))
+
+// Usercentrics: LocalizeMe is a service in your configuration; use its template id.
+fun applyConsents(consents: List<UsercentricsServiceConsent>) {
+    val granted = consents.firstOrNull { it.templateId == "YOUR_LOCALIZEME_TEMPLATE_ID" }?.status ?: false
+    LocalizeMe.setConsent(if (granted) Consent.FULL else Consent.STRINGS_ONLY)
+}
+Usercentrics.isReady({ status -> applyConsents(status.consents) }, { })
+UsercentricsEvent.onConsentUpdated { applyConsents(Usercentrics.instance.getConsents()) }
+```
+
+Map a refusal to `Consent.OFF` instead if a refused service must not reach the
+network at all.
+
 ### Applying an update without a restart
 
 By default a new version is downloaded and staged, and goes live on the next
@@ -175,9 +209,10 @@ The language is chosen the way the OS chooses resources: the app's locales
 system's, matched against every code a language answers to in the dashboard
 (`nb-NO` finds Norwegian published as `no`), most specific first.
 
-The SDK also sends an install id it made up (a random UUID in
+With full consent the SDK also sends an install id it made up (a random UUID in
 SharedPreferences), the app, SDK and OS versions, and any errors it hit or keys
-it could not find. Nothing that identifies a person or a device. An error in
+it could not find. Nothing that identifies a person or a device. Below full
+consent it sends none of that; see [Consent](#consent). An error in
 the SDK is reported, never thrown into the app.
 
 ## Building and testing

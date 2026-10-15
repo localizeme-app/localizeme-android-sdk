@@ -9,6 +9,31 @@ enum class LanguageScope {
 }
 
 /**
+ * How much of the SDK may run, for apps that ask the user first (a consent
+ * banner or CMP such as Usercentrics, OneTrust or Didomi). Ordered from least
+ * to most, so levels compare with `<`.
+ */
+enum class Consent {
+    /**
+     * No network at all. Strings already downloaded keep showing, falling back
+     * to the shipped ones.
+     */
+    OFF,
+    /**
+     * Strings only. Nothing is stored on the device beyond the strings, and
+     * requests carry the SDK key and SDK version and nothing about the install.
+     * The install id is deleted and nothing is reported.
+     */
+    STRINGS_ONLY,
+    /**
+     * Strings plus what the dashboard shows about installs: a random install id
+     * kept on the device, the app and OS version, the language, and error and
+     * missing-key reports.
+     */
+    FULL,
+}
+
+/**
  * Settings for [LocalizeMe.start]. Only [sdkKey] is required.
  *
  * The SDK always asks for Android strings: a value the dashboard scopes to
@@ -34,6 +59,12 @@ data class LocalizeMeConfig(
     val minimumCheckIntervalMs: Long = 60_000,
     /** Tell the dashboard about keys the app asked for that nobody had. */
     val reportMissingKeys: Boolean = true,
+    /**
+     * What the SDK may do until [LocalizeMe.setConsent] says otherwise. Not
+     * remembered between starts: the consent tool is the record, so start at
+     * the level it last gave, or at [Consent.OFF] until it answers.
+     */
+    val consent: Consent = Consent.FULL,
     /** Log what the SDK is doing. Leave off in release builds. */
     val debugLogging: Boolean = false,
 )

@@ -56,15 +56,21 @@ object LocalizeMe {
 
     @JvmStatic
     fun start(context: Context, config: LocalizeMeConfig) {
+        val config = synchronized(this) {
+            val pending = pendingConsent
+            pendingConsent = null
+            if (pending != null) config.copy(consent = pending) else config
+        }
         val app = context.applicationContext
         val prefix = config.sdkKey.take(10)
         val store = Store(File(File(app.cacheDir, "localizeme"), prefix))
         val api = Api(
             config = config,
             transport = UrlConnectionTransport(),
-            installId = { InstallId.current(app) },
+            installIdSupplier = { InstallId.current(app) },
             appVersion = { appVersion(app) },
             osVersion = "Android ${Build.VERSION.RELEASE}",
+            removeStoredInstallId = { InstallId.remove(app) },
         )
         val logger: (String) -> Unit = if (config.debugLogging) { message -> Log.d(TAG, message) } else { _ -> }
         val client = Client(
@@ -121,6 +127,31 @@ object LocalizeMe {
     @JvmStatic
     val hasStagedUpdate: Boolean get() = client?.hasStagedUpdate ?: false
 
+    /**
+     * What the SDK may do, for apps that ask the user first. Call it whenever
+     * the consent tool reports a change; it applies from the next request.
+     * Called before [start], it is kept and wins over the config's `consent`.
+     *
+     * ```kotlin
+     * LocalizeMe.setConsent(if (granted) Consent.FULL else Consent.STRINGS_ONLY)
+     * ```
+     */
+    @JvmStatic
+    fun setConsent(level: Consent) {
+        val client = synchronized(this) {
+            if (client == null) pendingConsent = level
+            client
+        }
+        client?.setConsent(level)
+    }
+
+    /** The consent the SDK is working under: the last [setConsent], else the config's. */
+    @JvmStatic
+    val consent: Consent
+        get() = synchronized(this) { client?.consent ?: pendingConsent ?: Consent.FULL }
+
+    private var pendingConsent: Consent? = null
+
     /** Show this language instead of the device's. `null` follows the device again. */
     @JvmStatic
     fun setLanguage(code: String?) {
@@ -153,7 +184,12 @@ object LocalizeMe {
     internal fun install(client: Client) {
         this.client?.shutdown()
         client.onUpdate = { version -> onUpdate?.let { cb -> main.post { cb(version) } } }
-        this.client = client
+        // A setConsent that arrived after start() read the pending level.
+        val late = synchronized(this) {
+            this.client = client
+            pendingConsent.also { pendingConsent = null }
+        }
+        late?.let { client.setConsent(it) }
         client.start()
         client.check(force = true)
     }
@@ -161,6 +197,7 @@ object LocalizeMe {
     internal fun reset() {
         client?.shutdown()
         client = null
+        synchronized(this) { pendingConsent = null }
     }
 
     internal fun register(ota: OtaResources) {

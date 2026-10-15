@@ -48,11 +48,25 @@ internal class Client(
     private var lastCheck = 0L
     @Volatile private var stopped = false
 
+    private val consentLock = Any()
+    @Volatile var consent: Consent = config.consent
+        private set
+    /** Set once [start] has run; until then a consent change leaves the first check to it. */
+    private var started = false
+
     /** Called on the SDK thread with the new version; the facade hops to main. */
     @Volatile var onUpdate: ((Long) -> Unit)? = null
 
     @Synchronized
     fun start() {
+        synchronized(consentLock) {
+            started = true
+            if (consent < Consent.FULL) {
+                // An id from an earlier start with full consent goes now.
+                reporter.setEnabled(false)
+                enqueue { api.forgetInstallId() }
+            }
+        }
         // A staged snapshot is what "next start" means: promote it now. When
         // the promotion cannot be saved it stays staged for the next start.
         val next = staged
@@ -84,6 +98,30 @@ internal class Client(
 
     fun noteMissing(key: String) {
         if (config.reportMissingKeys) reporter.recordMissingKey(key, language)
+    }
+
+    /**
+     * Changes what the SDK may do from the next request on. Going below
+     * [Consent.FULL] drops buffered reports at once and deletes the install
+     * id; leaving [Consent.OFF] checks straight away, since checks were
+     * skipped. Before [start] it only records the level: the check that
+     * follows start uses it.
+     */
+    fun setConsent(level: Consent) {
+        // One critical section, so two calls racing cannot leave the level and
+        // what the reporter and requests do disagreeing.
+        val checkNow = synchronized(consentLock) {
+            val previous = consent
+            consent = level
+            reporter.setEnabled(level == Consent.FULL)
+            api.consent = level
+            started && previous == Consent.OFF && level > Consent.OFF
+        }
+        enqueue {
+            if (level < Consent.FULL) api.forgetInstallId()
+            logger("consent $level")
+            if (checkNow) runCheck(force = true)
+        }
     }
 
     fun setLanguage(code: String?) {
@@ -147,6 +185,7 @@ internal class Client(
         if (!force && (stopped || now - lastCheck < config.minimumCheckIntervalMs)) {
             return Result.success(CheckOutcome.Throttled)
         }
+        if (consent == Consent.OFF) return Result.failure(consentOff())
         lastCheck = now
         return try {
             var result = api.fetchManifest(store.manifestETag)
@@ -155,6 +194,8 @@ internal class Client(
                 // An ETag without the manifest it stands for: ask again without it.
                 if (manifest == null) result = api.fetchManifest(null)
             }
+            // Turned off while the manifest was on its way: download nothing.
+            if (consent == Consent.OFF) return Result.failure(consentOff())
             val outcome = when (result) {
                 is Api.ManifestResult.NotModified -> {
                     logger("up to date at version ${current.version}")
@@ -271,6 +312,8 @@ internal class Client(
         }
     }
 
+    private fun consentOff() = LocalizeMeException(ErrorKind.CONSENT_OFF, "consent is off")
+
     private fun record(e: Exception, what: String): LocalizeMeException {
         val error = e as? LocalizeMeException
             ?: LocalizeMeException(ErrorKind.STORAGE, "${e.javaClass.simpleName}: ${e.message}")
@@ -280,7 +323,7 @@ internal class Client(
     }
 
     private fun sendReports() {
-        if (reporter.isEmpty) return
+        if (consent != Consent.FULL || reporter.isEmpty) return
         val (errors, missing) = reporter.drain()
         if (!api.report(errors, missing)) {
             reporter.restore(errors, missing)

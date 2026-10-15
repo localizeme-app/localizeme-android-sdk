@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "app.localizeme"
-version = "0.1.0-beta.2"
+version = "1.0.0"
 
 android {
     namespace = "app.localizeme.sdk"

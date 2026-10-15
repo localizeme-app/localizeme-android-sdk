@@ -6,9 +6,12 @@ A release is a git tag. JitPack builds any tag on demand; the
 
 1. Set `version` in `localizeme/build.gradle.kts` to the new version. The SDK
    reports it in every request, so it has to match the tag.
-2. Commit, then tag and push: `git tag -a 0.1.0 -m 0.1.0 && git push origin 0.1.0`.
-3. Mark the release on GitHub (`gh release create 0.1.0 --verify-tag`), with
-   `--prerelease` for a beta.
+2. Commit, then tag and push: `git tag -a 1.0.1 -m 1.0.1 && git push origin 1.0.1`.
+3. Mark the release on GitHub (`gh release create 1.0.1 --verify-tag`), with
+   `--prerelease` for a pre-release such as `2.0.0-rc.1`.
+
+Minor and patch releases must not break source; breaking changes wait for the
+next major version.
 
 ## One-time Maven Central setup
 

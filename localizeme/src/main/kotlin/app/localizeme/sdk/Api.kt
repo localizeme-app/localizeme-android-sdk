@@ -49,19 +49,32 @@ internal class UrlConnectionTransport : Transport {
  *
  * The install id and app version are suppliers: reading them touches
  * SharedPreferences and PackageManager, which belongs on the SDK thread, where
- * every request runs, and not in `Application.onCreate`.
+ * every request runs, and not in `Application.onCreate`. Neither is read below
+ * full consent.
  */
 internal class Api(
     private val config: LocalizeMeConfig,
     private val transport: Transport,
-    installId: () -> String,
+    private val installIdSupplier: () -> String,
     appVersion: () -> String,
     private val osVersion: String,
+    private val removeStoredInstallId: () -> Unit = {},
 ) {
     @Volatile var language: String? = null
+    /** Below [Consent.FULL], requests say nothing about the install. Set from any thread. */
+    @Volatile var consent: Consent = config.consent
 
-    private val installId: String by lazy(installId)
+    @Volatile private var cachedInstallId: String? = null
     private val appVersion: String by lazy(appVersion)
+
+    private val installId: String
+        get() = cachedInstallId ?: installIdSupplier().also { cachedInstallId = it }
+
+    /** Deletes the stored id and the copy in memory. Runs on the SDK thread, where the id is made. */
+    fun forgetInstallId() {
+        removeStoredInstallId()
+        cachedInstallId = null
+    }
 
     sealed class ManifestResult {
         object NotModified : ManifestResult()
@@ -113,11 +126,13 @@ internal class Api(
     private fun baseHeaders(): HashMap<String, String> {
         val headers = HashMap<String, String>()
         headers["Authorization"] = "Bearer ${config.sdkKey}"
-        headers["X-LocalizeMe-Install"] = installId
-        headers["X-LocalizeMe-App"] = appVersion
         headers["X-LocalizeMe-SDK"] = SDK_VERSION
-        headers["X-LocalizeMe-OS"] = osVersion
-        language?.let { headers["X-LocalizeMe-Language"] = it }
+        if (consent == Consent.FULL) {
+            headers["X-LocalizeMe-Install"] = installId
+            headers["X-LocalizeMe-App"] = appVersion
+            headers["X-LocalizeMe-OS"] = osVersion
+            language?.let { headers["X-LocalizeMe-Language"] = it }
+        }
         headers["User-Agent"] = "localizeme-android/$SDK_VERSION"
         return headers
     }

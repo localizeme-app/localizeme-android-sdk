@@ -8,19 +8,31 @@ internal class Reporter {
     private val errors = ArrayList<Map<String, String>>()
     private val seenErrorKinds = HashSet<String>()
     private val missing = LinkedHashMap<String, Map<String, String>>()
+    private var enabled = true
+
+    /** Off below full consent: nothing is recorded, and what was buffered is dropped. */
+    @Synchronized
+    fun setEnabled(on: Boolean) {
+        enabled = on
+        if (!on) {
+            errors.clear()
+            seenErrorKinds.clear()
+            missing.clear()
+        }
+    }
 
     @Synchronized
     fun recordError(error: LocalizeMeException) {
         // One report per kind per start: a failing cache read would otherwise
         // report once per string lookup.
-        if (error.kind.wireName in seenErrorKinds || errors.size >= MAX_ERRORS) return
+        if (!enabled || error.kind.wireName in seenErrorKinds || errors.size >= MAX_ERRORS) return
         seenErrorKinds += error.kind.wireName
         errors += mapOf("type" to error.kind.wireName, "message" to (error.message ?: "").take(500))
     }
 
     @Synchronized
     fun recordMissingKey(key: String, language: String?) {
-        if (missing.size >= MAX_MISSING_KEYS) return
+        if (!enabled || missing.size >= MAX_MISSING_KEYS) return
         val id = "${language ?: ""}\u0000$key"
         if (id !in missing) {
             val entry = HashMap<String, String>()
@@ -41,6 +53,7 @@ internal class Reporter {
 
     @Synchronized
     fun restore(errors: List<Map<String, String>>, missingKeys: List<Map<String, String>>) {
+        if (!enabled) return
         this.errors.addAll(0, errors)
         for (entry in missingKeys) {
             val id = "${entry["language"] ?: ""}\u0000${entry["key"] ?: ""}"

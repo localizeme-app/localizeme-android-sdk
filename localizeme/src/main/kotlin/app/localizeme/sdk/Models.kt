@@ -143,6 +143,8 @@ enum class ErrorKind(val wireName: String) {
     HASH_MISMATCH("hash_mismatch"),
     NETWORK("network"),
     STORAGE("storage"),
+    /** The check did not run because consent is [Consent.OFF]. */
+    CONSENT_OFF("consent_off"),
 }
 
 class LocalizeMeException(val kind: ErrorKind, message: String) : Exception("${kind.wireName}: $message")

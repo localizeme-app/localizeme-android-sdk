@@ -21,4 +21,9 @@ internal object InstallId {
         prefs.edit().putString(KEY, fresh).apply()
         return fresh
     }
+
+    /** Forgets the id, for when consent is withdrawn. A later grant makes a new one. */
+    fun remove(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).apply()
+    }
 }
