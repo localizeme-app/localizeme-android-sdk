@@ -252,6 +252,9 @@ where a string appears, key groups and the full history of every change.
 [Pricing](https://localizeme.app/pricing?src=github-android-sdk) ·
 [Developers](https://localizeme.app/developers?src=github-android-sdk)
 
+Guides: [Android strings.xml](https://localizeme.app/guides/android-strings-xml?src=github-android-sdk) ·
+[All localization guides](https://localizeme.app/guides?src=github-android-sdk)
+
 ## License
 
 Source-available under the [PolyForm Shield License 1.0.0](LICENSE). Put
