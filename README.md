@@ -153,6 +153,9 @@ UsercentricsEvent.onConsentUpdated { applyConsents(Usercentrics.instance.getCons
 Map a refusal to `Consent.OFF` instead if a refused service must not reach the
 network at all.
 
+For your privacy policy and consent tool, [SDK data and consent](https://localizeme.app/sdk-data?src=github-android-sdk)
+lists everything the SDK stores and sends at each level.
+
 ### Applying an update without a restart
 
 By default a new version is downloaded and staged, and goes live on the next
