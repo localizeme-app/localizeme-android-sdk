@@ -1,8 +1,10 @@
 package app.localizeme.sdk
 
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.util.DisplayMetrics
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,30 +29,41 @@ import org.robolectric.util.reflector.Reflector.reflector
 @Config(sdk = [34], shadows = [OtaResourcesTest.MiuiResources::class])
 class OtaResourcesTest {
 
+    @Before
+    fun buildAStackTrace() {
+        // A regression overflows the stack, and Robolectric builds a stack
+        // trace at the bottom of it. If StackTraceElement$HashedModules is
+        // first initialised there, it fails and stays broken for the whole JVM,
+        // and the Gradle test worker dies reporting the failure. Building one
+        // trace now, on a shallow stack, keeps the overflow an ordinary failure.
+        Thread.currentThread().stackTrace
+    }
+
     @Test
     fun syncSurvivesFrameworkReadingConfigurationBack() {
         val app = RuntimeEnvironment.getApplication()
-        // Stack traces need this class; initialising it on a full stack keeps
-        // an overflow reportable.
-        Thread.currentThread().stackTrace
+        val ota = OtaResources(app.resources, app.packageName) { null }
 
-        // On a small stack, so a regression fails here rather than taking the
-        // whole test JVM down with it.
-        var failure: Throwable? = null
-        val thread = Thread(null, {
-            try {
-                val ota = OtaResources(app.resources, app.packageName) { null }
-                assertEquals(app.resources.configuration, ota.configuration)
-                assertEquals(app.resources.displayMetrics, ota.displayMetrics)
-                ota.getInteger(android.R.integer.config_shortAnimTime)
-            } catch (e: Throwable) {
-                failure = e
-            }
-        }, "sync", 256 * 1024)
-        thread.start()
-        thread.join()
+        assertEquals(app.resources.configuration, ota.configuration)
+        assertEquals(app.resources.displayMetrics, ota.displayMetrics)
+        assertEquals(
+            app.resources.getInteger(android.R.integer.config_shortAnimTime),
+            ota.getInteger(android.R.integer.config_shortAnimTime),
+        )
+    }
 
-        failure?.let { throw AssertionError("sync() recursed through the framework", it.takeUnless { e -> e is StackOverflowError }) }
+    @Test
+    fun syncFollowsBaseAfterTheFirstSync() {
+        val app = RuntimeEnvironment.getApplication()
+        val ota = OtaResources(app.resources, app.packageName) { null }
+        ota.configuration
+
+        // Robolectric's updateConfiguration reads getConfiguration() back too,
+        // so this also covers the branch that applies a change.
+        RuntimeEnvironment.setQualifiers("+night")
+
+        assertEquals(Configuration.UI_MODE_NIGHT_YES, ota.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
+        assertEquals(0, app.resources.configuration.diff(ota.configuration))
     }
 
     @Implements(Resources::class)

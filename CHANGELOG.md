@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+- `getDisplayMetrics()` and `getConfiguration()` keep the 1.0.1 guard on
+  while they read, so on MIUI a call syncs once instead of twice. Every
+  `obtainStyledAttributes` and every new View reads the metrics.
+- The guard exists before the object is registered, so a configuration
+  change that arrives while another thread is still constructing one no
+  longer trips over it.
+
 ## 1.0.1
 
 - Fixes a crash on launch on Xiaomi phones (MIUI / HyperOS, Android 14–16):

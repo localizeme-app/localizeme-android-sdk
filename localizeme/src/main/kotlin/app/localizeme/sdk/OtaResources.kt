@@ -53,6 +53,8 @@ internal class OtaResources(
     private val texts = ConcurrentHashMap<Int, Pair<String, CharSequence>>()
     /** id → (OTA value, whether its placeholders match the shipped string's) */
     private val formatVerdicts = ConcurrentHashMap<Int, Pair<String, Boolean>>()
+    /** Set on a thread while it is inside [synced]. Before `init`: [LocalizeMe.syncResources] can reach this object as soon as it is registered. */
+    private val syncing = ThreadLocal<Boolean>()
 
     init {
         LocalizeMe.register(this)
@@ -60,19 +62,20 @@ internal class OtaResources(
 
     // MARK: configuration
 
-    /** Set on a thread while it is inside [sync]. */
-    private val syncing = ThreadLocal<Boolean>()
+    /** Brings this object's private configuration and metrics up to [base]'s. */
+    internal fun sync() = synced {}
 
     /**
-     * Brings this object's private configuration and metrics up to [base]'s.
+     * Runs [sync], then [read], skipping nested syncs on this thread until
+     * both are done.
      *
-     * Vendor builds call back into this object from the framework getters used
-     * here: MIUI's `Resources.getDisplayMetrics()` reads `getConfiguration()`
-     * for its font scale and freeform windows. A nested call returns without
-     * syncing, so it gets the configuration as it stands.
+     * Vendor builds call back into this object from the framework getters:
+     * MIUI's `Resources.getDisplayMetrics()` reads `getConfiguration()` for its
+     * font scale and freeform windows. A nested call gets the configuration as
+     * it stands, which the sync it is nested in has just brought up to date.
      */
-    internal fun sync() {
-        if (syncing.get() == true) return
+    private inline fun <T> synced(read: () -> T): T {
+        if (syncing.get() == true) return read()
         syncing.set(true)
         try {
             val configuration = base.configuration
@@ -80,20 +83,15 @@ internal class OtaResources(
             if (super.getConfiguration().diff(configuration) != 0 || super.getDisplayMetrics() != metrics) {
                 super.updateConfiguration(configuration, metrics)
             }
+            return read()
         } finally {
             syncing.set(false)
         }
     }
 
-    override fun getConfiguration(): Configuration {
-        sync()
-        return super.getConfiguration()
-    }
+    override fun getConfiguration(): Configuration = synced { super.getConfiguration() }
 
-    override fun getDisplayMetrics(): DisplayMetrics {
-        sync()
-        return super.getDisplayMetrics()
-    }
+    override fun getDisplayMetrics(): DisplayMetrics = synced { super.getDisplayMetrics() }
 
     override fun getLayout(id: Int): XmlResourceParser {
         sync()
