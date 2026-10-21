@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Fixes a crash on launch on Xiaomi phones (MIUI / HyperOS, Android 14–16):
+  a `StackOverflowError` in `OtaResources.sync`. MIUI's
+  `Resources.getDisplayMetrics()` reads `getConfiguration()`, which synced
+  again and called back into the same getter until the stack ran out.
+
 ## 1.0.0
 
 - The first stable release. From here on, only a new major version breaks

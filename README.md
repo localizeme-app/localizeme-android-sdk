@@ -27,12 +27,12 @@ and the dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.github.localizeme-app:localizeme-android-sdk:1.0.0")
+    implementation("com.github.localizeme-app:localizeme-android-sdk:1.0.1")
 }
 ```
 
 To build from source instead, run `./gradlew :localizeme:publishToMavenLocal`
-in this repository and depend on `app.localizeme:sdk:1.0.0` from
+in this repository and depend on `app.localizeme:sdk:1.0.1` from
 `mavenLocal()`.
 
 ## Use

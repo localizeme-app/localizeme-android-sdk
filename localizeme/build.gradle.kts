@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "app.localizeme"
-version = "1.0.0"
+version = "1.0.1"
 
 android {
     namespace = "app.localizeme.sdk"
@@ -49,6 +49,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // android.jar stubs org.json for JVM tests; the real one makes them run.
     testImplementation("org.json:json:20250107")
+    // Real framework Resources for OtaResources, with a shadow standing in for
+    // vendor patches of it.
+    testImplementation("org.robolectric:robolectric:4.15.1")
 
     // Instrumented tests: an AppCompat activity with an XML layout, run with
     // `./gradlew :localizeme:connectedDebugAndroidTest` on an emulator.

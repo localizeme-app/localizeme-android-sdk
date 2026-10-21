@@ -60,12 +60,28 @@ internal class OtaResources(
 
     // MARK: configuration
 
-    /** Brings this object's private configuration and metrics up to [base]'s. */
+    /** Set on a thread while it is inside [sync]. */
+    private val syncing = ThreadLocal<Boolean>()
+
+    /**
+     * Brings this object's private configuration and metrics up to [base]'s.
+     *
+     * Vendor builds call back into this object from the framework getters used
+     * here: MIUI's `Resources.getDisplayMetrics()` reads `getConfiguration()`
+     * for its font scale and freeform windows. A nested call returns without
+     * syncing, so it gets the configuration as it stands.
+     */
     internal fun sync() {
-        val configuration = base.configuration
-        val metrics = base.displayMetrics
-        if (super.getConfiguration().diff(configuration) != 0 || super.getDisplayMetrics() != metrics) {
-            super.updateConfiguration(configuration, metrics)
+        if (syncing.get() == true) return
+        syncing.set(true)
+        try {
+            val configuration = base.configuration
+            val metrics = base.displayMetrics
+            if (super.getConfiguration().diff(configuration) != 0 || super.getDisplayMetrics() != metrics) {
+                super.updateConfiguration(configuration, metrics)
+            }
+        } finally {
+            syncing.set(false)
         }
     }
 
