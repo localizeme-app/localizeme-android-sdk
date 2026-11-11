@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+- Plurals over the air. `getQuantityString` and `getQuantityText` (and so
+  Compose's `pluralStringResource`) read the release's `<name>_<category>`
+  keys, picking the CLDR category for the quantity in the resources'
+  locale. Each form is checked against the shipped item for the same
+  quantity; a missing form, or one whose placeholders differ, keeps the
+  shipped item for that quantity. Markup and CDATA are handled as in
+  `getText`.
+
 ## 1.0.2
 
 - `getDisplayMetrics()` and `getConfiguration()` keep the 1.0.1 guard on

@@ -27,12 +27,12 @@ and the dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.github.localizeme-app:localizeme-android-sdk:1.0.2")
+    implementation("com.github.localizeme-app:localizeme-android-sdk:1.1.0")
 }
 ```
 
 To build from source instead, run `./gradlew :localizeme:publishToMavenLocal`
-in this repository and depend on `app.localizeme:sdk:1.0.2` from
+in this repository and depend on `app.localizeme:sdk:1.1.0` from
 `mavenLocal()`.
 
 ## Use
@@ -62,6 +62,8 @@ the ones AppCompat makes for night mode and per-app locales):
 
 - `getString`, `getText` and `getString(id, args…)`, so also Compose's
   `stringResource()`.
+- `getQuantityString`, `getQuantityText` and `getQuantityString(id, n, args…)`,
+  so also Compose's `pluralStringResource()` (see Plurals below).
 - Views inflated from XML: `android:text` and `android:hint` on `TextView`
   and everything that extends it (`EditText`, `Button`, `CheckBox`, …),
   `android:contentDescription` on any view, `android:title`/`android:subtitle`
@@ -81,7 +83,7 @@ the ones AppCompat makes for night mode and per-app locales):
 
 - Menu titles (`MenuInflater` reads them straight from the resource table)
   and any text set by a style rather than on the view itself.
-- Plurals and string arrays: the bundle carries plain strings.
+- String arrays: the bundle carries plain strings.
 - Custom views named by their fully qualified class in XML when the Activity
   installs no `LayoutInflater` factory. `AppCompatActivity` installs one, so
   this only concerns a plain `Activity` or `ComponentActivity`.
@@ -94,6 +96,30 @@ Strings with placeholders are checked before use: an OTA value whose
 `%…` specifiers do not match the shipped string's (a `%d` turned into a
 `%s`, a missing argument) is logged and the shipped string is used, so a
 translation can never crash a `getString(id, args…)` call.
+
+### Plurals
+
+LocalizeMe stores each item of a `<plurals>` as its own key, named
+`<name>_<category>` with the CLDR categories `zero`, `one`, `two`, `few`,
+`many` and `other`: `<plurals name="results">` is `results_one`,
+`results_other` and so on. Importing a strings.xml creates these keys, and
+the Android export folds them back into `<plurals>`.
+
+For `getQuantityString(R.plurals.results, n)` the SDK picks the category for
+`n` with the CLDR rules of the resources' locale, as Android does (in
+Lithuanian 2 is `few`, in Polish 5 is `many`, in Arabic 0 is `zero`), and
+looks up `results_<category>`. Each form is checked against the shipped item
+for the same quantity, so "one result" and "%d results" can differ in
+placeholders without either being refused. A form the release does not have,
+or one whose placeholders differ from the shipped item's, keeps the app's own
+item for that quantity: a call returns either the OTA form or the shipped
+one, never a mix, and never borrows the OTA `other`. Markup and CDATA in a
+form come back as they do from `getText`.
+
+The forms are only read for a real `<plurals>` resource. A plain key named
+like the base (`results`, kept for an iOS app's `.strings`) or a string that
+happens to end in a category (`report_option_other`) is never used in place
+of a form.
 
 ### AppCompat, night mode and `configChanges`
 

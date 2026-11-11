@@ -9,6 +9,7 @@ import android.content.res.TypedArray
 import android.content.res.XmlResourceParser
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.icu.text.PluralRules
 import android.text.Html
 import android.text.SpannedString
 import android.util.AttributeSet
@@ -26,8 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * `getString`, `getText` and the formatting variants map the resource id back
  * to its entry name and look that up; anything the bundle does not have falls
- * through to the shipped resource. Plurals and arrays are left to the shipped
- * resources: the bundle carries plain strings.
+ * through to the shipped resource. `getQuantityText` and `getQuantityString`
+ * pick the CLDR category for the quantity and look up `<name>_<category>`, the
+ * key LocalizeMe stores each `<plurals>` item under. String arrays are left to
+ * the shipped resources.
  *
  * The deprecated constructor gives this object its own `ResourcesImpl` over
  * the app's asset manager. The framework never updates that copy, so every
@@ -53,6 +56,14 @@ internal class OtaResources(
     private val texts = ConcurrentHashMap<Int, Pair<String, CharSequence>>()
     /** id → (OTA value, whether its placeholders match the shipped string's) */
     private val formatVerdicts = ConcurrentHashMap<Int, Pair<String, Boolean>>()
+    /** (id, plural category) → (OTA value it was built from, the CharSequence to hand out) */
+    private val quantityTexts = ConcurrentHashMap<Pair<Int, String>, Pair<String, CharSequence>>()
+    /**
+     * (id, plural category, locale) → (OTA value, whether its placeholders match
+     * the shipped item's). The locale is part of the key because the shipped
+     * item it was checked against depends on it.
+     */
+    private val quantityVerdicts = ConcurrentHashMap<Triple<Int, String, Locale>, Pair<String, Boolean>>()
     /** Set on a thread while it is inside [synced]. Before `init`: [LocalizeMe.syncResources] can reach this object as soon as it is registered. */
     private val syncing = ThreadLocal<Boolean>()
 
@@ -230,23 +241,27 @@ internal class OtaResources(
     internal fun otaText(id: Int): CharSequence? {
         val value = ota(id) ?: return null
         texts[id]?.let { (source, text) -> if (source == value) return text }
-        val text: CharSequence = if (Formats.hasMarkup(value)) {
-            SpannedString(Html.fromHtml(Formats.toHtml(value), Html.FROM_HTML_MODE_COMPACT))
-        } else {
-            Formats.text(value)
-        }
+        val text = styled(value)
         texts[id] = value to text
         return text
     }
+
+    private fun styled(value: String): CharSequence = if (Formats.hasMarkup(value)) {
+        SpannedString(Html.fromHtml(Formats.toHtml(value), Html.FROM_HTML_MODE_COMPACT))
+    } else {
+        Formats.text(value)
+    }
+
+    /** The locale strings are formatted and plurals selected in, as the framework does. */
+    private fun locale(): Locale = base.configuration.locales[0] ?: Locale.getDefault()
 
     override fun getString(id: Int): String = otaText(id)?.toString() ?: base.getString(id)
 
     override fun getString(id: Int, vararg formatArgs: Any?): String {
         val value = otaText(id)?.toString() ?: return base.getString(id, *formatArgs)
         if (!compatible(id, value)) return base.getString(id, *formatArgs)
-        val locale = base.configuration.locales[0] ?: Locale.getDefault()
         return try {
-            String.format(locale, value, *formatArgs)
+            String.format(locale(), value, *formatArgs)
         } catch (e: IllegalFormatException) {
             base.getString(id, *formatArgs)
         }
@@ -270,11 +285,76 @@ internal class OtaResources(
 
     override fun getText(id: Int, def: CharSequence?): CharSequence? = otaText(id) ?: base.getText(id, def)
 
-    // Everything else goes to the shipped resources unchanged.
-    override fun getQuantityString(id: Int, quantity: Int): String = base.getQuantityString(id, quantity)
-    override fun getQuantityString(id: Int, quantity: Int, vararg formatArgs: Any?): String =
-        base.getQuantityString(id, quantity, *formatArgs)
-    override fun getQuantityText(id: Int, quantity: Int): CharSequence = base.getQuantityText(id, quantity)
+    // MARK: plurals
+
+    /**
+     * The OTA form of the `<plurals>` [id] for [quantity], or null when the app
+     * should use its own item for that quantity.
+     *
+     * The category comes from the CLDR rules of the resources' locale, the
+     * same rule the framework picks the shipped item with, and the value from
+     * the bundle key `<name>_<category>`. The value is used only when its
+     * placeholders match the shipped item for the same quantity; forms of one
+     * plural legitimately differ ("one result" against "%d results"), so it is
+     * never compared with another form. A category the bundle lacks keeps the
+     * shipped item rather than borrowing the OTA `other` the way the framework
+     * does for a `<plurals>` without that item: a shipped item for the right
+     * quantity is safer than an OTA one for another. Styled like [otaText].
+     */
+    internal fun otaQuantityText(id: Int, quantity: Int): CharSequence? {
+        val name = nameFor(id) ?: return null
+        val locale = locale()
+        val category = try {
+            PluralRules.forLocale(locale).select(quantity.toDouble())
+        } catch (e: RuntimeException) {
+            return null
+        }
+        if (category !in Formats.PLURAL_FORMS) return null
+        val value = lookup("${name}_$category") ?: return null
+        val key = id to category
+        val text = quantityTexts[key]?.takeIf { it.first == value }?.second
+            ?: styled(value).also { quantityTexts[key] = value to it }
+        return text.takeIf { quantityCompatible(id, quantity, category, locale, value, it.toString()) }
+    }
+
+    /**
+     * Whether the OTA form, as [text] after styling, takes the arguments the
+     * shipped item for [quantity] does; cached against its bundle [value].
+     * Checked for every quantity lookup, formatted or not: apps often format
+     * the result of `getQuantityString(id, n)` themselves.
+     */
+    private fun quantityCompatible(id: Int, quantity: Int, category: String, locale: Locale, value: String, text: String): Boolean {
+        val key = Triple(id, category, locale)
+        quantityVerdicts[key]?.let { (source, verdict) -> if (source == value) return verdict }
+        val shipped = try {
+            base.getQuantityString(id, quantity)
+        } catch (e: NotFoundException) {
+            // Not a <plurals> the app ships: leave the call to the framework.
+            return false
+        }
+        val verdict = Formats.compatible(shipped, text)
+        if (!verdict) Log.d("LocalizeMe", "${nameFor(id)}_$category: placeholders differ from the shipped item, using the shipped one")
+        quantityVerdicts[key] = value to verdict
+        return verdict
+    }
+
+    override fun getQuantityText(id: Int, quantity: Int): CharSequence =
+        otaQuantityText(id, quantity) ?: base.getQuantityText(id, quantity)
+
+    override fun getQuantityString(id: Int, quantity: Int): String =
+        otaQuantityText(id, quantity)?.toString() ?: base.getQuantityString(id, quantity)
+
+    override fun getQuantityString(id: Int, quantity: Int, vararg formatArgs: Any?): String {
+        val value = otaQuantityText(id, quantity)?.toString()
+            ?: return base.getQuantityString(id, quantity, *formatArgs)
+        return try {
+            String.format(locale(), value, *formatArgs)
+        } catch (e: IllegalFormatException) {
+            base.getQuantityString(id, quantity, *formatArgs)
+        }
+    }
+
+    // Arrays go to the shipped resources unchanged.
     override fun getStringArray(id: Int): Array<String> = base.getStringArray(id)
     override fun getTextArray(id: Int): Array<CharSequence> = base.getTextArray(id)
 }

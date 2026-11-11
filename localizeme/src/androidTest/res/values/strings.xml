@@ -11,4 +11,12 @@
     <string name="lz_test_bold">Shipped <b>bold</b></string>
     <string name="lz_test_mixed">Shipped <b>bold</b></string>
     <string name="lz_test_untranslated">Only shipped</string>
+    <plurals name="lz_test_files">
+        <item quantity="one">%d shipped file</item>
+        <item quantity="other">%d shipped files</item>
+    </plurals>
+    <plurals name="lz_test_hits">
+        <item quantity="one">One hit</item>
+        <item quantity="other">%d hits</item>
+    </plurals>
 </resources>

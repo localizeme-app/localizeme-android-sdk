@@ -21,6 +21,14 @@ internal object Formats {
      * LocalizeMe server writes exported strings.xml files by the same rule, so
      * a value looks the same in an exported build and over the air.
      */
+    /**
+     * The CLDR plural categories, in the server's order. LocalizeMe stores
+     * each `<plurals>` item as its own key, `<name>_<category>`; the server's
+     * `ANDROID_PLURAL_FORMS` and `PLURAL_KEY` (api/translations/utils.py) use
+     * this same list, so keep the two identical.
+     */
+    val PLURAL_FORMS: List<String> = listOf("zero", "one", "two", "few", "many", "other")
+
     val STYLE_TAGS: Set<String> = setOf(
         "b", "i", "u", "font", "a", "big", "small", "sup", "sub", "strike", "tt",
     )

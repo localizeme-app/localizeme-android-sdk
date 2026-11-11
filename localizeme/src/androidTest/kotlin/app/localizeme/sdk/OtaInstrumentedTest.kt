@@ -68,6 +68,12 @@ class OtaInstrumentedTest {
         "lz_test_range" to "%2\$d bis %1\$d",
         "lz_test_bold" to "OTA <b>bold</b>",
         "lz_test_mixed" to "OTA <em>as text</em> & <b>bold</b>",
+        // A plain key named like the base, as an iOS app's .strings keeps it.
+        "lz_test_files" to "Files (iOS)",
+        "lz_test_files_one" to "%d OTA file",
+        "lz_test_files_other" to "<b>%d</b> OTA files",
+        // A placeholder the shipped "one" item lacks, and no "other" at all.
+        "lz_test_hits_one" to "%d hit",
     )
     private lateinit var root: File
 
@@ -158,5 +164,21 @@ class OtaInstrumentedTest {
         assertNotNull(view.text)
         val viewSpans = (view.text as Spanned).getSpans(0, view.text.length, StyleSpan::class.java)
         assertFalse(viewSpans.isEmpty())
+    }
+
+    @Test
+    fun pluralsReadTheFormForTheQuantity() = withActivity { activity ->
+        val resources = activity.resources
+        assertEquals("1 OTA file", resources.getQuantityString(R.plurals.lz_test_files, 1, 1))
+        assertEquals("3 OTA files", resources.getQuantityString(R.plurals.lz_test_files, 3, 3))
+        val text = resources.getQuantityText(R.plurals.lz_test_files, 3)
+        assertEquals("%d OTA files", text.toString())
+        val spans = (text as Spanned).getSpans(0, text.length, StyleSpan::class.java)
+        assertEquals(1, spans.size)
+        assertEquals(Typeface.BOLD, spans[0].style)
+
+        // A form whose placeholders differ, and a missing one, keep the shipped item.
+        assertEquals("One hit", resources.getQuantityString(R.plurals.lz_test_hits, 1, 1))
+        assertEquals("4 hits", resources.getQuantityString(R.plurals.lz_test_hits, 4, 4))
     }
 }
